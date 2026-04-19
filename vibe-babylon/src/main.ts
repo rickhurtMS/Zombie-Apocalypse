@@ -63,22 +63,70 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   });
 
   let isSprinting = false;
+  let isClimbingUp = false;
+  let isClimbingDown = false;
+  let isOnTowerClimbing = false;
   scene.onKeyboardObservable.add((kbInfo) => {
     const code = kbInfo.event.code;
     if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
       if (code === "ShiftLeft" || code === "ShiftRight") {
         isSprinting = true;
       }
-      if ((code === "Space" || code === "Spacebar") && isGrounded) {
-        kbInfo.event.preventDefault();
-        verticalVelocity = JUMP_IMPULSE;
-        isGrounded = false;
+      if (code === "KeyX") {
+        // Exit tower and drop to ground away from tower
+        if (isOnTowerClimbing) {
+          const tower = towers[onTowerIndex];
+          // Place player outside tower at ground level
+          const exitDistance = 3.5;
+          const exitAngle = Math.random() * Math.PI * 2;
+          camera.position.x = tower.x + Math.cos(exitAngle) * exitDistance;
+          camera.position.z = tower.z + Math.sin(exitAngle) * exitDistance;
+          camera.position.y = PLAYER_EYE_HEIGHT;
+          
+          isOnTowerClimbing = false;
+          isClimbingUp = false;
+          isClimbingDown = false;
+          towerClimbHeight = 0;
+          verticalVelocity = 0;
+        }
+      }
+      if (code === "KeyT") {
+        // Teleport to top of nearest tower
+        if (onTowerIndex >= 0) {
+          const tower = towers[onTowerIndex];
+          camera.position.x = tower.x;
+          camera.position.z = tower.z;
+          camera.position.y = 18;
+          isOnTowerClimbing = true;
+          towerClimbHeight = 16;
+        }
+      }
+      if (code === "Space" || code === "Spacebar") {
+        if (onTowerIndex >= 0 && !isOnTowerClimbing) {
+          isOnTowerClimbing = true;
+          isClimbingUp = true;
+        } else if (!isOnTowerClimbing && isGrounded) {
+          kbInfo.event.preventDefault();
+          verticalVelocity = JUMP_IMPULSE;
+          isGrounded = false;
+        }
+      }
+      if (code === "ControlLeft" || code === "ControlRight") {
+        if (isOnTowerClimbing) {
+          isClimbingDown = true;
+        }
       }
     }
 
     if (kbInfo.type === KeyboardEventTypes.KEYUP) {
       if (code === "ShiftLeft" || code === "ShiftRight") {
         isSprinting = false;
+      }
+      if (code === "Space" || code === "Spacebar") {
+        isClimbingUp = false;
+      }
+      if (code === "ControlLeft" || code === "ControlRight") {
+        isClimbingDown = false;
       }
     }
   });
@@ -514,6 +562,107 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     crown.material = leavesMat;
     treesCreated++;
   }
+
+  // Sniper towers scattered around the map
+  const towerMat = new StandardMaterial("towerMat", scene);
+  towerMat.diffuseColor = new Color3(0.3, 0.32, 0.35);
+  towerMat.specularColor = Color3.Black();
+
+  const platformMat = new StandardMaterial("platformMat", scene);
+  platformMat.diffuseColor = new Color3(0.42, 0.44, 0.48);
+  platformMat.specularColor = new Color3(0.08, 0.08, 0.08);
+
+  const railMat = new StandardMaterial("railMat", scene);
+  railMat.diffuseColor = new Color3(0.25, 0.27, 0.3);
+  railMat.specularColor = Color3.Black();
+
+  const towerPositions: Array<[number, number]> = [
+    [50, -50],
+    [-50, 50],
+  ];
+
+  towerPositions.forEach((pos, i) => {
+    const [x, z] = pos;
+    if (isOnRoad(x, z, 4)) {
+      return;
+    }
+
+    // Tower column
+    const column = MeshBuilder.CreateCylinder(
+      `tower_column_${i}`,
+      { height: 10, diameter: 1.2, tessellation: 16 },
+      scene
+    );
+    column.position = new Vector3(x, 5, z);
+    column.material = towerMat;
+    column.isPickable = false;
+
+    // Tower base (wider foundation)
+    const base = MeshBuilder.CreateCylinder(
+      `tower_base_${i}`,
+      { height: 0.6, diameter: 2.2, tessellation: 16 },
+      scene
+    );
+    base.position = new Vector3(x, 0.3, z);
+    base.material = towerMat;
+    base.isPickable = false;
+
+    // Platform
+    const platform = MeshBuilder.CreateBox(
+      `tower_platform_${i}`,
+      { width: 3.5, height: 0.35, depth: 3.5 },
+      scene
+    );
+    platform.position = new Vector3(x, 10.2, z);
+    platform.material = platformMat;
+    platform.isPickable = false;
+
+    // Sniper nest (elevated shooting position)
+    const nest = MeshBuilder.CreateBox(
+      `tower_nest_${i}`,
+      { width: 2, height: 1.2, depth: 2 },
+      scene
+    );
+    nest.position = new Vector3(x, 11.5, z);
+    nest.material = towerMat;
+    nest.isPickable = false;
+
+    // Guard rails around platform
+    const railPositions = [
+      new Vector3(x + 1.8, 10.4, z),
+      new Vector3(x - 1.8, 10.4, z),
+      new Vector3(x, 10.4, z + 1.8),
+      new Vector3(x, 10.4, z - 1.8),
+    ];
+
+    railPositions.forEach((railPos, j) => {
+      const rail = MeshBuilder.CreateBox(
+        `tower_rail_${i}_${j}`,
+        { width: 0.15, height: 0.8, depth: 0.15 },
+        scene
+      );
+      rail.position = railPos;
+      rail.material = railMat;
+      rail.isPickable = false;
+    });
+
+    // Ladder details on column - extended all the way to top
+    for (let rung = 1; rung < 16; rung++) {
+      const ladderRung = MeshBuilder.CreateBox(
+        `tower_ladder_${i}_${rung}`,
+        { width: 1.6, height: 0.12, depth: 0.12 },
+        scene
+      );
+      ladderRung.position = new Vector3(x, 1 + rung * 0.95, z);
+      ladderRung.material = railMat;
+      ladderRung.isPickable = false;
+    }
+  });
+
+  // Tower climbing system
+  const towers = towerPositions.map(([x, z]) => ({ x, z, platformHeight: 10.2 }));
+  let onTowerIndex = -1;
+  let towerClimbHeight = 0;
 
   // Basic zombie system.
   const zombieMat = new StandardMaterial("zombieMat", scene);
@@ -1050,20 +1199,96 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.033, engine.getDeltaTime() / 1000);
 
-    // Apply gravity and jump
-    verticalVelocity -= GRAVITY * dt;
-    verticalVelocity = Math.max(-MAX_FALL_SPEED, verticalVelocity);
-    camera.position.y += verticalVelocity * dt;
-    if (camera.position.y <= PLAYER_EYE_HEIGHT) {
-      camera.position.y = PLAYER_EYE_HEIGHT;
-      verticalVelocity = 0;
-      isGrounded = true;
-    } else {
-      isGrounded = false;
+    // Check if player is near a tower
+    onTowerIndex = -1;
+    for (let i = 0; i < towers.length; i++) {
+      const tower = towers[i];
+      const dx = camera.position.x - tower.x;
+      const dz = camera.position.z - tower.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const detectionRange = isOnTowerClimbing ? 5 : 3.5; // Larger range while climbing
+      if (dist <= detectionRange) {
+        onTowerIndex = i;
+        break;
+      }
     }
 
-    // Apply sprint speed
-    camera.speed = isSprinting ? SPRINT_SPEED : WALK_SPEED;
+    // Exit climbing if player moves away from tower
+    if (onTowerIndex < 0 && isOnTowerClimbing) {
+      isOnTowerClimbing = false;
+      isClimbingUp = false;
+      isClimbingDown = false;
+      towerClimbHeight = 0;
+    }
+
+    // Handle tower climbing
+    if (isOnTowerClimbing && onTowerIndex >= 0) {
+      const tower = towers[onTowerIndex];
+      const maxClimbHeight = 16; // Top of the sniper nest + extra height
+      if (isClimbingUp) {
+        towerClimbHeight = Math.min(maxClimbHeight, towerClimbHeight + dt * 8);
+      }
+      if (isClimbingDown) {
+        towerClimbHeight = Math.max(0, towerClimbHeight - dt * 8);
+        if (towerClimbHeight <= 0) {
+          isOnTowerClimbing = false;
+        }
+      }
+      
+      // Position player on the ladder
+      const ladderOffsetX = 0.9;
+      const ladderOffsetZ = 0.9;
+      camera.position.x = tower.x + ladderOffsetX;
+      camera.position.z = tower.z + ladderOffsetZ;
+      camera.position.y = 1.8 + towerClimbHeight;
+      
+      // Once at top, position on platform for sniping
+      if (towerClimbHeight >= 10.2) {
+        camera.position.x = tower.x;
+        camera.position.z = tower.z;
+        camera.position.y = 1.8 + towerClimbHeight;
+      }
+      
+      verticalVelocity = 0;
+      isGrounded = true;
+    } else if (!isOnTowerClimbing) {
+      towerClimbHeight = 0;
+      // Apply gravity and jump
+      verticalVelocity -= GRAVITY * dt;
+      verticalVelocity = Math.max(-MAX_FALL_SPEED, verticalVelocity);
+      camera.position.y += verticalVelocity * dt;
+      if (camera.position.y <= PLAYER_EYE_HEIGHT) {
+        camera.position.y = PLAYER_EYE_HEIGHT;
+        verticalVelocity = 0;
+        isGrounded = true;
+      } else {
+        isGrounded = false;
+      }
+    }
+
+    // Disable movement while climbing, apply sprint speed otherwise
+    if (isOnTowerClimbing) {
+      camera.angularSensibility = 1000;
+      camera.speed = 0;
+    } else {
+      camera.speed = isSprinting ? SPRINT_SPEED : WALK_SPEED;
+    }
+
+    // Tower collision (prevent walking into tower column when not climbing)
+    if (!isOnTowerClimbing) {
+      const TOWER_COLLISION_RADIUS = 1.5;
+      for (const tower of towers) {
+        const dx = camera.position.x - tower.x;
+        const dz = camera.position.z - tower.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < TOWER_COLLISION_RADIUS && dist > 0.01) {
+          const overlap = TOWER_COLLISION_RADIUS - dist;
+          const safeDist = Math.max(0.0001, dist);
+          camera.position.x += (dx / safeDist) * overlap;
+          camera.position.z += (dz / safeDist) * overlap;
+        }
+      }
+    }
 
     // Building collision detection
     const BUILDING_COLLISION_RADIUS = 4;
@@ -1215,15 +1440,76 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       toPlayer.y = 0;
       const distance = toPlayer.length();
 
-      if (distance > 0.01) {
+      // Zombies can only see/chase player if within vision range
+      const ZOMBIE_VISION_RANGE = 35;
+      const canSeePlayer = distance <= ZOMBIE_VISION_RANGE;
+
+      // Check if zombie is near a tower and player is actively climbing on tower
+      let isClimbing = false;
+      if (isOnTowerClimbing && onTowerIndex >= 0 && canSeePlayer) {
+        const tower = towers[onTowerIndex];
+        const zDist = Math.sqrt((zombie.position.x - tower.x) ** 2 + (zombie.position.z - tower.z) ** 2);
+        if (zDist <= 3.5) {
+          isClimbing = true;
+          // Make zombie slowly climb tower toward player
+          const climbSpeed = dt * 1.5;
+          const maxZombieHeight = 16; // Zombies can climb as high as the tower goes
+          if (zombie.position.y < Math.min(camera.position.y, 1.8 + maxZombieHeight)) {
+            zombie.position.y += climbSpeed;
+          }
+          // Position zombie on the ladder
+          const ladderOffsetX = 0.9;
+          const ladderOffsetZ = 0.9;
+          zombie.position.x = tower.x + ladderOffsetX;
+          zombie.position.z = tower.z + ladderOffsetZ;
+        }
+      }
+
+      if (!isClimbing && distance > 0.01 && canSeePlayer) {
         const zombieSpeedFactor = 1.8 + survivalTime * 0.08;
         const move = toPlayer.scale((1 / distance) * dt * zombieSpeedFactor);
         zombie.position.addInPlace(move);
+
+        // Make zombie face the player with smooth rotation
+        const targetRotationY = Math.atan2(toPlayer.x, toPlayer.z);
+        const maxTurnSpeed = dt * 2.5;
+        const rotationDiff = targetRotationY - zombie.rotation.y;
+
+        // Normalize angle difference to [-PI, PI]
+        let normalizedDiff = rotationDiff;
+        while (normalizedDiff > Math.PI) normalizedDiff -= Math.PI * 2;
+        while (normalizedDiff < -Math.PI) normalizedDiff += Math.PI * 2;
+
+        // Apply limited rotation
+        if (Math.abs(normalizedDiff) > maxTurnSpeed) {
+          zombie.rotation.y += Math.sign(normalizedDiff) * maxTurnSpeed;
+        } else {
+          zombie.rotation.y = targetRotationY;
+        }
       }
 
-      if (distance <= 1.5) {
-        playerHealth = Math.max(0, playerHealth - 7 * dt);
-        damageFlash = Math.min(1, Math.max(damageFlash, 0.45));
+      // Zombie-to-zombie collision to prevent stacking
+      const ZOMBIE_SEPARATION_RADIUS = 0.6;
+      for (let j = 0; j < zombies.length; j++) {
+        if (j === zombies.indexOf(zombie)) continue;
+        const otherZombie = zombies[j];
+        const separation = zombie.position.subtract(otherZombie.position);
+        const sepDist = separation.length();
+        
+        if (sepDist < ZOMBIE_SEPARATION_RADIUS && sepDist > 0.01) {
+          const pushForce = (ZOMBIE_SEPARATION_RADIUS - sepDist) * 0.5;
+          const pushDirection = separation.scale(1 / sepDist);
+          zombie.position.addInPlace(pushDirection.scale(pushForce * dt));
+        }
+      }
+
+      if (distance <= 1.5 && canSeePlayer) {
+        // Only take damage if zombie is also within reasonable vertical distance
+        const verticalDistance = Math.abs(camera.position.y - zombie.position.y);
+        if (verticalDistance <= 2.5) {
+          playerHealth = Math.max(0, playerHealth - 7 * dt);
+          damageFlash = Math.min(1, Math.max(damageFlash, 0.45));
+        }
         if (playerHealth <= 0) {
           showGameOver();
           break;

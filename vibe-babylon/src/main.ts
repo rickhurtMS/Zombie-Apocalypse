@@ -116,6 +116,19 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
           isClimbingDown = true;
         }
       }
+      if (code === "KeyR") {
+        // Toggle scope sight
+        if (hasSniperRifle) {
+          isScopeActive = !isScopeActive;
+          if (isScopeActive) {
+            scopeReticle.style.display = "block";
+            crosshair.style.display = "none";
+          } else {
+            scopeReticle.style.display = "none";
+            crosshair.style.display = "block";
+          }
+        }
+      }
     }
 
     if (kbInfo.type === KeyboardEventTypes.KEYUP) {
@@ -165,6 +178,12 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   weaponAccentMat.diffuseColor = new Color3(0.18, 0.42, 1.0);
   weaponAccentMat.emissiveColor = new Color3(0.03, 0.06, 0.14);
   weaponAccentMat.specularColor = Color3.Black();
+
+  // Sniper rifle materials
+  const sniperScopeMat = new StandardMaterial("sniperScopeMat", scene);
+  sniperScopeMat.diffuseColor = new Color3(0.1, 0.35, 0.1);
+  sniperScopeMat.emissiveColor = new Color3(0.05, 0.15, 0.05);
+  sniperScopeMat.specularColor = Color3.Black();
 
   const weaponBody = MeshBuilder.CreateBox(
     "weaponBody",
@@ -249,6 +268,122 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   weaponArm.rotation = new Vector3(0.18, -0.3, 0.22);
   weaponArm.material = weaponAccentMat;
   weaponArm.isPickable = false;
+
+  // Sniper rifle in first-person view
+  const sniperRoot = new Mesh("sniperRoot", scene);
+  sniperRoot.parent = camera;
+  sniperRoot.position = new Vector3(0.28, -0.42, 0.78);
+  sniperRoot.rotation = new Vector3(0.08, -0.18, 0.01);
+  sniperRoot.isVisible = false;
+
+  // Sniper barrel
+  const sniperBarrel = MeshBuilder.CreateCylinder(
+    "sniperBarrel",
+    { height: 0.92, diameter: 0.06, tessellation: 10 },
+    scene
+  );
+  sniperBarrel.parent = sniperRoot;
+  sniperBarrel.rotation.x = Math.PI / 2;
+  sniperBarrel.position = new Vector3(0, 0.04, 0.52);
+  sniperBarrel.material = weaponMetalMat;
+  sniperBarrel.isPickable = false;
+
+  // Sniper stock
+  const sniperStock = MeshBuilder.CreateBox(
+    "sniperStock",
+    { width: 0.12, height: 0.16, depth: 0.48 },
+    scene
+  );
+  sniperStock.parent = sniperRoot;
+  sniperStock.position = new Vector3(-0.04, -0.08, -0.18);
+  sniperStock.material = weaponGripMat;
+  sniperStock.isPickable = false;
+
+  // Sniper receiver
+  const sniperReceiver = MeshBuilder.CreateBox(
+    "sniperReceiver",
+    { width: 0.08, height: 0.12, depth: 0.28 },
+    scene
+  );
+  sniperReceiver.parent = sniperRoot;
+  sniperReceiver.position = new Vector3(0, 0.02, 0.1);
+  sniperReceiver.material = weaponMetalMat;
+  sniperReceiver.isPickable = false;
+
+  // Sniper bolt
+  const sniperBolt = MeshBuilder.CreateBox(
+    "sniperBolt",
+    { width: 0.06, height: 0.06, depth: 0.12 },
+    scene
+  );
+  sniperBolt.parent = sniperRoot;
+  sniperBolt.position = new Vector3(0.08, 0.04, 0.06);
+  sniperBolt.material = weaponGripMat;
+  sniperBolt.isPickable = false;
+
+  // Sniper scope
+  const sniperScopeBody = MeshBuilder.CreateCylinder(
+    "sniperScopeBody",
+    { height: 0.38, diameter: 0.04, tessellation: 8 },
+    scene
+  );
+  sniperScopeBody.parent = sniperRoot;
+  sniperScopeBody.position = new Vector3(0, 0.14, 0.12);
+  sniperScopeBody.material = weaponMetalMat;
+  sniperScopeBody.isPickable = false;
+
+  const sniperScopeObjective = MeshBuilder.CreateCylinder(
+    "sniperScopeObjective",
+    { height: 0.06, diameter: 0.048, tessellation: 8 },
+    scene
+  );
+  sniperScopeObjective.parent = sniperRoot;
+  sniperScopeObjective.position = new Vector3(0, 0.14, 0.31);
+  sniperScopeObjective.material = sniperScopeMat;
+  sniperScopeObjective.isPickable = false;
+
+  const sniperScopeEyepiece = MeshBuilder.CreateCylinder(
+    "sniperScopeEyepiece",
+    { height: 0.08, diameter: 0.038, tessellation: 8 },
+    scene
+  );
+  sniperScopeEyepiece.parent = sniperRoot;
+  sniperScopeEyepiece.position = new Vector3(0, 0.14, -0.1);
+  sniperScopeEyepiece.material = sniperScopeMat;
+  sniperScopeEyepiece.isPickable = false;
+
+  // Scope mounts
+  const scopeMount1 = MeshBuilder.CreateBox(
+    "scopeMount1",
+    { width: 0.04, height: 0.06, depth: 0.08 },
+    scene
+  );
+  scopeMount1.parent = sniperRoot;
+  scopeMount1.position = new Vector3(-0.06, 0.08, 0.08);
+  scopeMount1.material = weaponMetalMat;
+  scopeMount1.isPickable = false;
+
+  const scopeMount2 = MeshBuilder.CreateBox(
+    "scopeMount2",
+    { width: 0.04, height: 0.06, depth: 0.08 },
+    scene
+  );
+  scopeMount2.parent = sniperRoot;
+  scopeMount2.position = new Vector3(-0.06, 0.08, 0.18);
+  scopeMount2.material = weaponMetalMat;
+  scopeMount2.isPickable = false;
+
+  // Sniper grip
+  const sniperGrip = MeshBuilder.CreateBox(
+    "sniperGrip",
+    { width: 0.1, height: 0.22, depth: 0.14 },
+    scene
+  );
+  sniperGrip.parent = sniperRoot;
+  sniperGrip.position = new Vector3(0.02, -0.16, -0.02);
+  sniperGrip.rotation.x = 0.15;
+  sniperGrip.material = weaponGripMat;
+  sniperGrip.isPickable = false;
 
   // Warm sunset lighting.
   const hemi = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
@@ -437,6 +572,52 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     [-22, 0, 56],
     [18, 0, -58],
     [-20, 0, -56],
+    [32, 0, 28],
+    [-32, 0, 30],
+    [28, 0, -32],
+    [-28, 0, -34],
+    [44, 0, -28],
+    [-44, 0, 26],
+    [52, 0, 38],
+    [-50, 0, 40],
+    [38, 0, 50],
+    [-40, 0, 52],
+    [6, 0, 32],
+    [-12, 0, 36],
+    [14, 0, -30],
+    [-16, 0, -32],
+    [26, 0, 12],
+    [-24, 0, 14],
+    [36, 0, -16],
+    [-34, 0, -18],
+    [48, 0, 8],
+    [-46, 0, 10],
+    [10, 0, -42],
+    [-12, 0, -40],
+    [54, 0, -32],
+    [-52, 0, -30],
+    [42, 0, 34],
+    [-40, 0, 36],
+    [30, 0, -48],
+    [-32, 0, -50],
+    [60, 0, 12],
+    [-60, 0, 14],
+    [16, 0, 56],
+    [-18, 0, 54],
+    [24, 0, -54],
+    [-26, 0, -56],
+    [50, 0, -44],
+    [-48, 0, -46],
+    [14, 0, 2],
+    [-12, 0, -4],
+    [20, 0, 26],
+    [-18, 0, 28],
+    [44, 0, 16],
+    [-42, 0, 18],
+    [36, 0, 40],
+    [-38, 0, 42],
+    [10, 0, -8],
+    [-8, 0, -6],
   ];
   const activeBuildingPositions = buildingPositions.filter(([x, _, z]) => !isOnRoad(x, z, 3.2));
   activeBuildingPositions.forEach(([x, y, z], i) => {
@@ -534,13 +715,41 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
   let treesCreated = 0;
   let treeAttempts = 0;
-  while (treesCreated < 24 && treeAttempts < 320) {
+  const treePositions: Vector3[] = [];
+  while (treesCreated < 60 && treeAttempts < 800) {
     treeAttempts++;
     const angle = Math.random() * Math.PI * 2;
     const radius = 44 + Math.random() * 24;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     if (isOnRoad(x, z, 3.5)) {
+      continue;
+    }
+
+    // Check collision with existing trees
+    let tooClose = false;
+    const minTreeDistance = 3.5;
+    for (const treePos of treePositions) {
+      const dist = Math.sqrt((x - treePos.x) ** 2 + (z - treePos.z) ** 2);
+      if (dist < minTreeDistance) {
+        tooClose = true;
+        break;
+      }
+    }
+    
+    // Check collision with buildings
+    if (!tooClose) {
+      const minBuildingDistance = 5.5;
+      for (const [bx, _, bz] of activeBuildingPositions) {
+        const dist = Math.sqrt((x - bx) ** 2 + (z - bz) ** 2);
+        if (dist < minBuildingDistance) {
+          tooClose = true;
+          break;
+        }
+      }
+    }
+    
+    if (tooClose) {
       continue;
     }
 
@@ -560,6 +769,8 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     );
     crown.position = new Vector3(x, trunkHeight + 0.9, z);
     crown.material = leavesMat;
+    
+    treePositions.push(new Vector3(x, 0, z));
     treesCreated++;
   }
 
@@ -686,7 +897,13 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   ammoStripeMat.diffuseColor = new Color3(0.12, 0.12, 0.14);
   ammoStripeMat.specularColor = Color3.Black();
 
+  // Sniper rifle system
+  const sniperBoxMat = new StandardMaterial("sniperBoxMat", scene);
+  sniperBoxMat.diffuseColor = new Color3(0.15, 0.15, 0.18);
+  sniperBoxMat.specularColor = Color3.Black();
+
   const zombies: Mesh[] = [];
+  const zombieVelocities: Array<{ y: number }> = [];
   const medBoxes: Mesh[] = [];
   const ammoBoxes: Mesh[] = [];
   const bullets: Array<{ mesh: Mesh; velocity: Vector3; life: number }> = [];
@@ -703,6 +920,90 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   let audioContext: AudioContext | null = null;
   let verticalVelocity = 0;
   let isGrounded = true;
+  let gameStarted = false;
+  let hasSniperRifle = false;
+  let isScopeActive = false;
+  let sniperPickupSpawned = false;
+
+  // Title sequence overlay
+  const titleOverlay = document.createElement("div");
+  titleOverlay.style.position = "fixed";
+  titleOverlay.style.inset = "0";
+  titleOverlay.style.display = "flex";
+  titleOverlay.style.alignItems = "center";
+  titleOverlay.style.justifyContent = "center";
+  titleOverlay.style.flexDirection = "column";
+  titleOverlay.style.gap = "20px";
+  titleOverlay.style.background = "rgba(0, 0, 0, 1)";
+  titleOverlay.style.color = "#ffffff";
+  titleOverlay.style.fontFamily = "monospace";
+  titleOverlay.style.zIndex = "25";
+  titleOverlay.style.opacity = "1";
+  titleOverlay.style.transition = "opacity 0.8s ease-out";
+
+  const titleText = document.createElement("div");
+  titleText.textContent = "THE UPRISING OF THE UNDEAD";
+  titleText.style.fontSize = "56px";
+  titleText.style.fontWeight = "700";
+  titleText.style.textShadow = "0 0 20px #ff3030, 2px 2px 4px #000";
+  titleText.style.letterSpacing = "4px";
+
+  const subtitleText = document.createElement("div");
+  subtitleText.textContent = "SURVIVAL HORROR";
+  subtitleText.style.fontSize = "24px";
+  subtitleText.style.fontWeight = "300";
+  subtitleText.style.textShadow = "1px 1px 2px #000";
+  subtitleText.style.letterSpacing = "2px";
+  subtitleText.style.color = "#aaaaaa";
+
+  const pressText = document.createElement("div");
+  pressText.textContent = "CLICK TO START";
+  pressText.style.fontSize = "16px";
+  pressText.style.marginTop = "40px";
+  pressText.style.textShadow = "1px 1px 2px #000";
+  pressText.style.opacity = "0";
+  pressText.style.animation = "pulse 1.5s infinite";
+
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  titleOverlay.appendChild(titleText);
+  titleOverlay.appendChild(subtitleText);
+  titleOverlay.appendChild(pressText);
+  document.body.appendChild(titleOverlay);
+
+  const startGameFromTitle = () => {
+    if (!gameStarted) {
+      gameStarted = true;
+      titleOverlay.style.opacity = "0";
+      hud.style.display = "block";
+      crosshair.style.display = "block";
+      setTimeout(() => {
+        titleOverlay.remove();
+      }, 800);
+      if (document.pointerLockElement !== canvas) {
+        canvas.requestPointerLock();
+      }
+    }
+  };
+
+  // Auto-start title fade and click to continue
+  setTimeout(() => {
+    pressText.style.opacity = "1";
+  }, 1200);
+
+  titleOverlay.addEventListener("click", startGameFromTitle);
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "Enter") {
+      startGameFromTitle();
+    }
+  });
 
   const hud = document.createElement("div");
   hud.style.position = "fixed";
@@ -713,6 +1014,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   hud.style.fontSize = "18px";
   hud.style.textShadow = "1px 1px 2px #000";
   hud.style.pointerEvents = "none";
+  hud.style.display = "none";
   document.body.appendChild(hud);
 
   const crosshair = document.createElement("div");
@@ -725,8 +1027,64 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   crosshair.style.fontSize = "24px";
   crosshair.style.textShadow = "1px 1px 2px #000";
   crosshair.style.pointerEvents = "none";
+  crosshair.style.display = "none";
   crosshair.textContent = "+";
   document.body.appendChild(crosshair);
+
+  // Scope reticle overlay
+  const scopeReticle = document.createElement("div");
+  scopeReticle.style.position = "fixed";
+  scopeReticle.style.left = "50%";
+  scopeReticle.style.top = "50%";
+  scopeReticle.style.transform = "translate(-50%, -50%)";
+  scopeReticle.style.width = "400px";
+  scopeReticle.style.height = "400px";
+  scopeReticle.style.border = "3px solid #00ff00";
+  scopeReticle.style.borderRadius = "50%";
+  scopeReticle.style.boxShadow = "0 0 15px #00aa00, inset 0 0 15px #00aa00";
+  scopeReticle.style.pointerEvents = "none";
+  scopeReticle.style.display = "none";
+  scopeReticle.style.zIndex = "15";
+
+  // Scope crosshair center
+  const scopeCrosshair = document.createElement("div");
+  scopeCrosshair.style.position = "absolute";
+  scopeCrosshair.style.left = "50%";
+  scopeCrosshair.style.top = "50%";
+  scopeCrosshair.style.transform = "translate(-50%, -50%)";
+  scopeCrosshair.style.width = "20px";
+  scopeCrosshair.style.height = "20px";
+  scopeCrosshair.style.borderLeft = "2px solid #00ff00";
+  scopeCrosshair.style.borderRight = "2px solid #00ff00";
+  scopeCrosshair.style.borderTop = "2px solid #00ff00";
+  scopeCrosshair.style.borderBottom = "2px solid #00ff00";
+  scopeCrosshair.style.boxSizing = "border-box";
+  scopeReticle.appendChild(scopeCrosshair);
+
+  // Scope distance markers
+  for (let i = 1; i <= 3; i++) {
+    const marker = document.createElement("div");
+    marker.style.position = "absolute";
+    marker.style.width = "40px";
+    marker.style.height = "2px";
+    marker.style.background = "#00ff00";
+    marker.style.left = "50%";
+    marker.style.top = `calc(50% - ${i * 40}px)`;
+    marker.style.transform = "translateX(-50%)";
+    scopeReticle.appendChild(marker);
+
+    const markerBottom = document.createElement("div");
+    markerBottom.style.position = "absolute";
+    markerBottom.style.width = "40px";
+    markerBottom.style.height = "2px";
+    markerBottom.style.background = "#00ff00";
+    markerBottom.style.left = "50%";
+    markerBottom.style.top = `calc(50% + ${i * 40}px)`;
+    markerBottom.style.transform = "translateX(-50%)";
+    scopeReticle.appendChild(markerBottom);
+  }
+
+  document.body.appendChild(scopeReticle);
 
   const damageOverlay = document.createElement("div");
   damageOverlay.style.position = "fixed";
@@ -902,12 +1260,10 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   };
 
   const spawnZombie = () => {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 15 + Math.random() * 10;
     const spawnPosition = new Vector3(
-      camera.position.x + Math.cos(angle) * distance,
+      (Math.random() - 0.5) * MAP_BOUNDARY * 2,
       0.9,
-      camera.position.z + Math.sin(angle) * distance
+      (Math.random() - 0.5) * MAP_BOUNDARY * 2
     );
 
     const zombieVariant = Math.floor(Math.random() * 4);
@@ -1007,6 +1363,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     legRight.isPickable = false;
 
     zombies.push(zombieRoot);
+    zombieVelocities.push({ y: 0 });
   };
 
   const spawnMedBox = () => {
@@ -1105,6 +1462,41 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     ammoBoxes.push(ammoBox);
   };
 
+  const spawnSniperPickup = () => {
+    if (sniperPickupSpawned || hasSniperRifle) {
+      return;
+    }
+
+    // Hidden deep in a ruined building interior - only spawn once
+    const sniperPosition = new Vector3(56, 3.2, 20); // Very hidden spot - deep inside a ruined building
+
+    const sniperCrate = MeshBuilder.CreateBox(
+      `sniper_crate_${Date.now()}`,
+      { width: 1.2, height: 0.8, depth: 1.2 },
+      scene
+    );
+    sniperCrate.position = sniperPosition;
+    sniperCrate.material = sniperBoxMat;
+    sniperCrate.isPickable = false;
+
+    // Scope detail on top
+    const scopeGlass = MeshBuilder.CreateCylinder(
+      `scope_glass_${Date.now()}`,
+      { height: 0.4, diameter: 0.35, tessellation: 10 },
+      scene
+    );
+    scopeGlass.parent = sniperCrate;
+    scopeGlass.position = new Vector3(0.3, 0.5, 0);
+    scopeGlass.rotation.z = Math.PI / 2.2;
+    scopeGlass.material = sniperScopeMat;
+    scopeGlass.isPickable = false;
+
+    // Store reference for pickup detection
+    (sniperCrate as any).isSniperPickup = true;
+    medBoxes.push(sniperCrate); // Add to medBoxes for collision detection (reuse existing system)
+    sniperPickupSpawned = true;
+  };
+
   const hitParticleMat = new StandardMaterial("hitParticleMat", scene);
   hitParticleMat.diffuseColor = new Color3(0.9, 0.95, 0.4);
   hitParticleMat.emissiveColor = new Color3(0.25, 0.3, 0.08);
@@ -1156,8 +1548,8 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
     bullets.push({
       mesh: bullet,
-      velocity: forward.scale(30),
-      life: 1.2,
+      velocity: forward.scale(40),
+      life: 4.0,
     });
   };
 
@@ -1168,7 +1560,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   };
 
   scene.onPointerObservable.add((pointerInfo) => {
-    if (isGameOver) {
+    if (isGameOver || !gameStarted) {
       return;
     }
 
@@ -1198,6 +1590,24 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.033, engine.getDeltaTime() / 1000);
+
+    // Handle scope zoom
+    if (isScopeActive) {
+      camera.fov = 0.35; // Zoomed in for sniper scope
+      camera.angularSensibility = 2000; // More sensitive/precise aiming
+      weaponRoot.isVisible = false;
+      sniperRoot.isVisible = true;
+    } else {
+      camera.fov = 0.8; // Normal view
+      camera.angularSensibility = 1000; // Normal sensitivity
+      if (hasSniperRifle) {
+        weaponRoot.isVisible = false;
+        sniperRoot.isVisible = true;
+      } else {
+        weaponRoot.isVisible = true;
+        sniperRoot.isVisible = false;
+      }
+    }
 
     // Check if player is near a tower
     onTowerIndex = -1;
@@ -1355,6 +1765,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
         const hitPosition = zombie.position.clone();
         zombie.dispose();
         zombies.splice(hitZombieIndex, 1);
+        zombieVelocities.splice(hitZombieIndex, 1);
         bullet.mesh.dispose();
         bullets.splice(i, 1);
         spawnHitBurst(hitPosition);
@@ -1382,7 +1793,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       }
     }
 
-    if (isGameOver) {
+    if (isGameOver || !gameStarted) {
       return;
     }
 
@@ -1390,6 +1801,11 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     spawnTimer += dt;
     medSpawnTimer += dt;
     ammoSpawnTimer += dt;
+
+    // Spawn sniper rifle once at the start of the game
+    if (survivalTime > 2.5 && !sniperPickupSpawned) {
+      spawnSniperPickup();
+    }
 
     const zombieSpawnInterval = Math.max(1.25, 3 - survivalTime * 0.015);
     const zombiesPerWave = Math.min(5, 1 + Math.floor(survivalTime / 25));
@@ -1415,8 +1831,19 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
       const pickupDistance = getPlanarDistance(camera.position, medBox.position);
       if (pickupDistance <= 1.5) {
-        playerHealth = Math.min(100, playerHealth + 15);
-        playPickupSound();
+        // Check if this is a sniper pickup
+        if ((medBox as any).isSniperPickup) {
+          hasSniperRifle = true;
+          isScopeActive = false;
+          weaponRoot.isVisible = false;
+          sniperRoot.isVisible = true;
+          crosshair.style.display = "block";
+          playPickupSound();
+          updateHud();
+        } else {
+          playerHealth = Math.min(100, playerHealth + 15);
+          playPickupSound();
+        }
         medBox.dispose();
         medBoxes.splice(i, 1);
       }
@@ -1444,6 +1871,20 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       const ZOMBIE_VISION_RANGE = 35;
       const canSeePlayer = distance <= ZOMBIE_VISION_RANGE;
 
+      // Apply gravity to zombies
+      const zombieIndex = zombies.indexOf(zombie);
+      const ZOMBIE_GRAVITY = 36;
+      zombieVelocities[zombieIndex].y -= ZOMBIE_GRAVITY * dt;
+      zombieVelocities[zombieIndex].y = Math.max(-45, zombieVelocities[zombieIndex].y);
+      
+      zombie.position.y += zombieVelocities[zombieIndex].y * dt;
+      
+      // Ground collision
+      if (zombie.position.y <= 0.9) {
+        zombie.position.y = 0.9;
+        zombieVelocities[zombieIndex].y = 0;
+      }
+
       // Check if zombie is near a tower and player is actively climbing on tower
       let isClimbing = false;
       if (isOnTowerClimbing && onTowerIndex >= 0 && canSeePlayer) {
@@ -1457,11 +1898,21 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
           if (zombie.position.y < Math.min(camera.position.y, 1.8 + maxZombieHeight)) {
             zombie.position.y += climbSpeed;
           }
-          // Position zombie on the ladder
+          // Position zombie around the ladder with slight variation to prevent stacking
           const ladderOffsetX = 0.9;
           const ladderOffsetZ = 0.9;
-          zombie.position.x = tower.x + ladderOffsetX;
-          zombie.position.z = tower.z + ladderOffsetZ;
+          const spreadRadius = 1.2;
+          
+          // Use zombie's unique ID to create a consistent spread angle
+          const zombieId = zombieIndex;
+          const spreadAngle = (zombieId * Math.PI * 2) / Math.max(1, zombies.length);
+          const spreadDist = Math.min(spreadRadius, 0.3 + (zombieId * 0.15) % 0.9);
+          
+          zombie.position.x = tower.x + ladderOffsetX + Math.cos(spreadAngle) * spreadDist;
+          zombie.position.z = tower.z + ladderOffsetZ + Math.sin(spreadAngle) * spreadDist;
+          
+          // Cancel vertical velocity while climbing
+          zombieVelocities[zombieIndex].y = 0;
         }
       }
 

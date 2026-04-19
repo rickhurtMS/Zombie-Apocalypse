@@ -12,10 +12,16 @@ import {
   DirectionalLight,
   MeshBuilder,
   Mesh,
+  AbstractMesh,
+  AnimationGroup,
+  ImageProcessingConfiguration,
   PointerEventTypes,
   KeyboardEventTypes,
+  SceneLoader,
+  ShadowGenerator,
   StandardMaterial,
 } from "@babylonjs/core";
+import "@babylonjs/loaders/glTF";
 
 function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   const scene = new Scene(engine);
@@ -27,6 +33,18 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   scene.fogMode = Scene.FOGMODE_EXP;
   scene.fogColor = new Color3(0.64, 0.3, 0.2);
   scene.fogDensity = 0.012;
+
+  // Subtle game-like image processing to improve contrast and reduce flat lighting.
+  const imageFx = scene.imageProcessingConfiguration;
+  imageFx.toneMappingEnabled = true;
+  imageFx.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+  imageFx.exposure = 1.08;
+  imageFx.contrast = 1.16;
+  imageFx.vignetteEnabled = true;
+  imageFx.vignetteWeight = 0.22;
+  imageFx.vignetteStretch = 0.08;
+  imageFx.vignetteBlendMode = ImageProcessingConfiguration.VIGNETTEMODE_MULTIPLY;
+  imageFx.vignetteColor = new Color4(0, 0, 0, 0);
 
   // First-person camera with WASD movement.
   const PLAYER_EYE_HEIGHT = 1.8;
@@ -184,6 +202,11 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   sniperScopeMat.diffuseColor = new Color3(0.1, 0.35, 0.1);
   sniperScopeMat.emissiveColor = new Color3(0.05, 0.15, 0.05);
   sniperScopeMat.specularColor = Color3.Black();
+
+  const sniperStockMat = new StandardMaterial("sniperStockMat", scene);
+  sniperStockMat.diffuseColor = new Color3(0.3, 0.22, 0.16);
+  sniperStockMat.emissiveColor = new Color3(0.03, 0.02, 0.01);
+  sniperStockMat.specularColor = Color3.Black();
 
   const weaponBody = MeshBuilder.CreateBox(
     "weaponBody",
@@ -385,15 +408,51 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   sniperGrip.material = weaponGripMat;
   sniperGrip.isPickable = false;
 
-  // Warm sunset lighting.
-  const hemi = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
-  hemi.intensity = 0.45;
-  hemi.groundColor = new Color3(0.2, 0.07, 0.05);
+  // Cinematic sunset rig: warm key light + cool ambient fill.
+  const SUN_INTENSITY = 1.15;
+  const AMBIENT_INTENSITY = 0.34;
 
-  const sun = new DirectionalLight("sun", new Vector3(-0.8, -1.3, -0.3), scene);
-  sun.position = new Vector3(30, 35, 20);
-  sun.intensity = 1.35;
-  sun.diffuse = new Color3(1.0, 0.62, 0.35);
+  const sun = new DirectionalLight("sun", new Vector3(-0.92, -0.36, -0.18), scene);
+  sun.position = new Vector3(72, 28, 36);
+  sun.intensity = SUN_INTENSITY;
+  sun.diffuse = new Color3(1.0, 0.54, 0.27);
+  sun.specular = new Color3(0.35, 0.2, 0.12);
+
+  const hemi = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
+  hemi.intensity = AMBIENT_INTENSITY;
+  hemi.diffuse = new Color3(0.38, 0.44, 0.68);
+  hemi.groundColor = new Color3(0.16, 0.11, 0.24);
+  hemi.specular = Color3.Black();
+
+  // Subtle rim light from behind to separate silhouettes from the background.
+  const rim = new DirectionalLight("rim", new Vector3(0.64, -0.22, 0.74), scene);
+  rim.position = new Vector3(-64, 18, -72);
+  rim.intensity = 0.18;
+  rim.diffuse = new Color3(0.42, 0.5, 0.76);
+  rim.specular = new Color3(0.08, 0.1, 0.14);
+
+  // Shadow toggles and performance controls.
+  const SHADOWS_ENABLED = true;
+  const ZOMBIES_CAST_SHADOWS = true;
+  const PROPS_CAST_SHADOWS = true;
+  const GROUND_RECEIVES_SHADOWS = true;
+  const MAX_PROP_SHADOW_CASTERS = 5;
+
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const isLowPerfDevice =
+    (typeof nav.hardwareConcurrency === "number" && nav.hardwareConcurrency <= 4) ||
+    (typeof nav.deviceMemory === "number" && nav.deviceMemory <= 4);
+  const SHADOW_MAP_SIZE = isLowPerfDevice ? 1024 : 2048;
+
+  let shadowRefreshTimer = 0;
+  const SHADOW_REFRESH_INTERVAL = 0.2;
+
+  const shadowGenerator = SHADOWS_ENABLED ? new ShadowGenerator(SHADOW_MAP_SIZE, sun) : null;
+  if (shadowGenerator) {
+    shadowGenerator.bias = 0.0008;
+    shadowGenerator.normalBias = 0.02;
+    shadowGenerator.usePoissonSampling = true;
+  }
 
   // Ground
   const ground = MeshBuilder.CreateGround("ground", { width: 140, height: 140 }, scene);
@@ -401,6 +460,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   groundMat.diffuseColor = new Color3(0.18, 0.14, 0.12);
   groundMat.specularColor = Color3.Black();
   ground.material = groundMat;
+  ground.receiveShadows = !!shadowGenerator && GROUND_RECEIVES_SHADOWS;
 
   // Streets (main cross + a few side streets).
   const roadMat = new StandardMaterial("roadMat", scene);
@@ -470,6 +530,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   wheelMat.specularColor = Color3.Black();
 
   const cars: Mesh[] = [];
+  const shadowCandidateProps: Mesh[] = [];
 
   const createCar = (name: string, position: Vector3, rotationY: number) => {
     const carRoot = new Mesh(name, scene);
@@ -477,6 +538,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     carRoot.rotation.y = rotationY;
     carRoot.isPickable = false;
     cars.push(carRoot);
+    shadowCandidateProps.push(carRoot);
 
     const chassis = MeshBuilder.CreateBox(`${name}_chassis`, { width: 1.95, height: 0.36, depth: 3.35 }, scene);
     chassis.parent = carRoot;
@@ -636,6 +698,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     mat.diffuseColor = buildingColor;
     mat.specularColor = Color3.Black();
     b.material = mat;
+    shadowCandidateProps.push(b);
 
     const door = MeshBuilder.CreateBox(
       `door_${i}`,
@@ -769,6 +832,7 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     );
     crown.position = new Vector3(x, trunkHeight + 0.9, z);
     crown.material = leavesMat;
+    shadowCandidateProps.push(crown);
     
     treePositions.push(new Vector3(x, 0, z));
     treesCreated++;
@@ -880,6 +944,50 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   zombieMat.diffuseColor = new Color3(0.2, 0.65, 0.25);
   zombieMat.specularColor = Color3.Black();
 
+  const ZOMBIE_MODEL_ROOT_URL = "/assets/quaternius/Zombie/";
+  const ZOMBIE_MODEL_FILE = "Zombie_Basic.gltf";
+  const MAX_ACTIVE_ZOMBIES = 18;
+  let zombieModelFactory:
+    | ((variantTag: string) => { root: Mesh; animationGroups: AnimationGroup[] })
+    | null = null;
+
+  void SceneLoader.LoadAssetContainerAsync(
+    ZOMBIE_MODEL_ROOT_URL,
+    ZOMBIE_MODEL_FILE,
+    scene
+  )
+    .then((container) => {
+      container.removeAllFromScene();
+      zombieModelFactory = (variantTag: string) => {
+        const stamp = `${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const instance = container.instantiateModelsToScene(
+          (name) => `zombieModel_${variantTag}_${name}_${stamp}`,
+          false
+        );
+        const zombieRoot = new Mesh(`zombieRoot_${variantTag}_${stamp}`, scene);
+        zombieRoot.isPickable = false;
+
+        for (const rootNode of instance.rootNodes) {
+          rootNode.parent = zombieRoot;
+        }
+        zombieRoot.getChildMeshes().forEach((child) => {
+          child.isPickable = false;
+        });
+        instance.animationGroups.forEach((group) => {
+          group.stop();
+          group.speedRatio = 0.82;
+        });
+
+        return {
+          root: zombieRoot,
+          animationGroups: instance.animationGroups,
+        };
+      };
+    })
+    .catch((error: unknown) => {
+      console.warn("Zombie model failed to load, using fallback meshes.", error);
+    });
+
   const medBoxMat = new StandardMaterial("medBoxMat", scene);
   medBoxMat.diffuseColor = new Color3(0.92, 0.92, 0.95);
   medBoxMat.specularColor = Color3.Black();
@@ -904,6 +1012,11 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
   const zombies: Mesh[] = [];
   const zombieVelocities: Array<{ y: number }> = [];
+  const zombieAnimationGroups: AnimationGroup[][] = [];
+  const zombieGroundHeights: number[] = [];
+  const zombieHitPoints: number[] = [];
+  const zombieHitRadii: number[] = [];
+  const zombieHitHeights: number[] = [];
   const medBoxes: Mesh[] = [];
   const ammoBoxes: Mesh[] = [];
   const bullets: Array<{ mesh: Mesh; velocity: Vector3; life: number }> = [];
@@ -981,9 +1094,14 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   const startGameFromTitle = () => {
     if (!gameStarted) {
       gameStarted = true;
+      const ctx = getAudioContext();
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
       titleOverlay.style.opacity = "0";
       hud.style.display = "block";
       crosshair.style.display = "block";
+      canvas.focus();
       setTimeout(() => {
         titleOverlay.remove();
       }, 800);
@@ -1260,9 +1378,15 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   };
 
   const spawnZombie = () => {
+    if (zombies.length >= MAX_ACTIVE_ZOMBIES) {
+      return;
+    }
+
+    const ZOMBIE_FEET_Y = 0.03;
+
     const spawnPosition = new Vector3(
       (Math.random() - 0.5) * MAP_BOUNDARY * 2,
-      0.9,
+      ZOMBIE_FEET_Y,
       (Math.random() - 0.5) * MAP_BOUNDARY * 2
     );
 
@@ -1288,7 +1412,30 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       variant = "tough";
     }
 
-    const zombieRoot = new Mesh(`zombieRoot_${variant}_${Date.now()}_${Math.floor(Math.random() * 1000)}`, scene);
+    if (zombieModelFactory) {
+      const { root: zombieRoot, animationGroups } = zombieModelFactory(variant);
+      const modelScale = scale * 1.25;
+      zombieRoot.position = spawnPosition;
+      zombieRoot.scaling = new Vector3(modelScale, modelScale, modelScale);
+
+      const bounds = zombieRoot.getHierarchyBoundingVectors();
+      const desiredFootY = ZOMBIE_FEET_Y;
+      zombieRoot.position.y += desiredFootY - bounds.min.y;
+
+      zombies.push(zombieRoot);
+      zombieVelocities.push({ y: 0 });
+      zombieAnimationGroups.push(animationGroups);
+      zombieGroundHeights.push(zombieRoot.position.y);
+      zombieHitPoints.push(variant === "bloated" || variant === "tough" ? 2 : 1);
+      zombieHitRadii.push(Math.max(0.8, 0.75 * modelScale));
+      zombieHitHeights.push(Math.max(0.9, 0.95 * modelScale));
+      return;
+    }
+
+    const zombieRoot = new Mesh(
+      `zombieRoot_${variant}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      scene
+    );
     zombieRoot.position = spawnPosition;
     zombieRoot.scaling = new Vector3(scale, scale, scale);
 
@@ -1362,8 +1509,16 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     legRight.material = variantMat;
     legRight.isPickable = false;
 
+    const fallbackBounds = zombieRoot.getHierarchyBoundingVectors();
+    zombieRoot.position.y += ZOMBIE_FEET_Y - fallbackBounds.min.y;
+
     zombies.push(zombieRoot);
     zombieVelocities.push({ y: 0 });
+    zombieAnimationGroups.push([]);
+    zombieGroundHeights.push(zombieRoot.position.y);
+    zombieHitPoints.push(variant === "bloated" || variant === "tough" ? 2 : 1);
+    zombieHitRadii.push(Math.max(0.6, 0.62 * scale));
+    zombieHitHeights.push(Math.max(0.7, 0.85 * scale));
   };
 
   const spawnMedBox = () => {
@@ -1470,30 +1625,101 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     // Hidden deep in a ruined building interior - only spawn once
     const sniperPosition = new Vector3(56, 3.2, 20); // Very hidden spot - deep inside a ruined building
 
-    const sniperCrate = MeshBuilder.CreateBox(
-      `sniper_crate_${Date.now()}`,
-      { width: 1.2, height: 0.8, depth: 1.2 },
-      scene
-    );
-    sniperCrate.position = sniperPosition;
-    sniperCrate.material = sniperBoxMat;
-    sniperCrate.isPickable = false;
+    const sniperPickup = new Mesh(`sniper_pickup_${Date.now()}`, scene);
+    sniperPickup.position = sniperPosition;
+    sniperPickup.rotation = new Vector3(0.18, Math.PI * 0.2, -0.12);
+    sniperPickup.isPickable = false;
 
-    // Scope detail on top
-    const scopeGlass = MeshBuilder.CreateCylinder(
-      `scope_glass_${Date.now()}`,
-      { height: 0.4, diameter: 0.35, tessellation: 10 },
+    const pickupStock = MeshBuilder.CreateBox(
+      `sniper_pickup_stock_${Date.now()}`,
+      { width: 0.16, height: 0.18, depth: 0.72 },
       scene
     );
-    scopeGlass.parent = sniperCrate;
-    scopeGlass.position = new Vector3(0.3, 0.5, 0);
-    scopeGlass.rotation.z = Math.PI / 2.2;
-    scopeGlass.material = sniperScopeMat;
-    scopeGlass.isPickable = false;
+    pickupStock.parent = sniperPickup;
+    pickupStock.position = new Vector3(-0.16, 0.02, -0.08);
+    pickupStock.rotation = new Vector3(0.08, -0.06, 0);
+    pickupStock.material = sniperStockMat;
+    pickupStock.isPickable = false;
+
+    const pickupReceiver = MeshBuilder.CreateBox(
+      `sniper_pickup_receiver_${Date.now()}`,
+      { width: 0.14, height: 0.16, depth: 0.38 },
+      scene
+    );
+    pickupReceiver.parent = sniperPickup;
+    pickupReceiver.position = new Vector3(0, 0.06, 0.26);
+    pickupReceiver.material = weaponMetalMat;
+    pickupReceiver.isPickable = false;
+
+    const pickupBarrel = MeshBuilder.CreateCylinder(
+      `sniper_pickup_barrel_${Date.now()}`,
+      { height: 1.28, diameter: 0.08, tessellation: 12 },
+      scene
+    );
+    pickupBarrel.parent = sniperPickup;
+    pickupBarrel.rotation.x = Math.PI / 2;
+    pickupBarrel.position = new Vector3(0, 0.08, 0.94);
+    pickupBarrel.material = weaponMetalMat;
+    pickupBarrel.isPickable = false;
+
+    const pickupMuzzle = MeshBuilder.CreateCylinder(
+      `sniper_pickup_muzzle_${Date.now()}`,
+      { height: 0.16, diameter: 0.11, tessellation: 12 },
+      scene
+    );
+    pickupMuzzle.parent = sniperPickup;
+    pickupMuzzle.rotation.x = Math.PI / 2;
+    pickupMuzzle.position = new Vector3(0, 0.08, 1.64);
+    pickupMuzzle.material = weaponGripMat;
+    pickupMuzzle.isPickable = false;
+
+    const pickupScopeBody = MeshBuilder.CreateCylinder(
+      `sniper_pickup_scope_${Date.now()}`,
+      { height: 0.52, diameter: 0.09, tessellation: 10 },
+      scene
+    );
+    pickupScopeBody.parent = sniperPickup;
+    pickupScopeBody.rotation.x = Math.PI / 2;
+    pickupScopeBody.position = new Vector3(0, 0.22, 0.3);
+    pickupScopeBody.material = weaponGripMat;
+    pickupScopeBody.isPickable = false;
+
+    const pickupScopeLens = MeshBuilder.CreateCylinder(
+      `sniper_pickup_scope_lens_${Date.now()}`,
+      { height: 0.1, diameter: 0.11, tessellation: 10 },
+      scene
+    );
+    pickupScopeLens.parent = sniperPickup;
+    pickupScopeLens.rotation.x = Math.PI / 2;
+    pickupScopeLens.position = new Vector3(0, 0.22, 0.58);
+    pickupScopeLens.material = sniperScopeMat;
+    pickupScopeLens.isPickable = false;
+
+    const pickupGrip = MeshBuilder.CreateBox(
+      `sniper_pickup_grip_${Date.now()}`,
+      { width: 0.12, height: 0.3, depth: 0.16 },
+      scene
+    );
+    pickupGrip.parent = sniperPickup;
+    pickupGrip.position = new Vector3(0, -0.14, 0.08);
+    pickupGrip.rotation.x = 0.24;
+    pickupGrip.material = weaponGripMat;
+    pickupGrip.isPickable = false;
+
+    const pickupMagazine = MeshBuilder.CreateBox(
+      `sniper_pickup_mag_${Date.now()}`,
+      { width: 0.11, height: 0.2, depth: 0.12 },
+      scene
+    );
+    pickupMagazine.parent = sniperPickup;
+    pickupMagazine.position = new Vector3(0, -0.08, 0.28);
+    pickupMagazine.rotation.x = -0.1;
+    pickupMagazine.material = sniperBoxMat;
+    pickupMagazine.isPickable = false;
 
     // Store reference for pickup detection
-    (sniperCrate as any).isSniperPickup = true;
-    medBoxes.push(sniperCrate); // Add to medBoxes for collision detection (reuse existing system)
+    (sniperPickup as any).isSniperPickup = true;
+    medBoxes.push(sniperPickup); // Add to medBoxes for collision detection (reuse existing system)
     sniperPickupSpawned = true;
   };
 
@@ -1559,6 +1785,57 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
     return Math.sqrt(dx * dx + dz * dz);
   };
 
+  const collectCasterMeshes = (root: Mesh): AbstractMesh[] => {
+    const children = root.getChildMeshes();
+    if (children.length === 0) {
+      return [root];
+    }
+    return children;
+  };
+
+  const updateShadowCasters = () => {
+    if (!shadowGenerator) {
+      return;
+    }
+
+    const shadowMap = shadowGenerator.getShadowMap();
+    if (!shadowMap) {
+      return;
+    }
+
+    const casterSet = new Set<AbstractMesh>();
+
+    if (ZOMBIES_CAST_SHADOWS) {
+      for (const zombie of zombies) {
+        if (zombie.isDisposed()) {
+          continue;
+        }
+        for (const mesh of collectCasterMeshes(zombie)) {
+          casterSet.add(mesh);
+        }
+      }
+    }
+
+    if (PROPS_CAST_SHADOWS) {
+      const nearestProps = shadowCandidateProps
+        .filter((prop) => !prop.isDisposed())
+        .sort(
+          (a, b) =>
+            Vector3.DistanceSquared(a.position, camera.position) -
+            Vector3.DistanceSquared(b.position, camera.position)
+        )
+        .slice(0, MAX_PROP_SHADOW_CASTERS);
+
+      for (const prop of nearestProps) {
+        for (const mesh of collectCasterMeshes(prop)) {
+          casterSet.add(mesh);
+        }
+      }
+    }
+
+    shadowMap.renderList = Array.from(casterSet);
+  };
+
   scene.onPointerObservable.add((pointerInfo) => {
     if (isGameOver || !gameStarted) {
       return;
@@ -1590,6 +1867,12 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.033, engine.getDeltaTime() / 1000);
+
+    shadowRefreshTimer += dt;
+    if (shadowRefreshTimer >= SHADOW_REFRESH_INTERVAL) {
+      shadowRefreshTimer = 0;
+      updateShadowCasters();
+    }
 
     // Handle scope zoom
     if (isScopeActive) {
@@ -1753,8 +2036,11 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
 
       let hitZombieIndex = -1;
       for (let j = 0; j < zombies.length; j++) {
-        const hitDistance = Vector3.Distance(bullet.mesh.position, zombies[j].position);
-        if (hitDistance <= 0.75) {
+        const zombie = zombies[j];
+        const hitTarget = zombie.position.clone();
+        hitTarget.y += zombieHitHeights[j] ?? 0.9;
+        const hitDistance = Vector3.Distance(bullet.mesh.position, hitTarget);
+        if (hitDistance <= (zombieHitRadii[j] ?? 0.75)) {
           hitZombieIndex = j;
           break;
         }
@@ -1763,15 +2049,29 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       if (hitZombieIndex !== -1) {
         const zombie = zombies[hitZombieIndex];
         const hitPosition = zombie.position.clone();
-        zombie.dispose();
-        zombies.splice(hitZombieIndex, 1);
-        zombieVelocities.splice(hitZombieIndex, 1);
         bullet.mesh.dispose();
         bullets.splice(i, 1);
         spawnHitBurst(hitPosition);
         playHitSound();
-        score += 1;
-        updateHud();
+
+        zombieHitPoints[hitZombieIndex] -= 1;
+        if (zombieHitPoints[hitZombieIndex] <= 0) {
+          const animGroups = zombieAnimationGroups[hitZombieIndex];
+          animGroups?.forEach((group) => {
+            group.stop();
+            group.dispose();
+          });
+          zombie.dispose();
+          zombies.splice(hitZombieIndex, 1);
+          zombieVelocities.splice(hitZombieIndex, 1);
+          zombieAnimationGroups.splice(hitZombieIndex, 1);
+          zombieGroundHeights.splice(hitZombieIndex, 1);
+          zombieHitPoints.splice(hitZombieIndex, 1);
+          zombieHitRadii.splice(hitZombieIndex, 1);
+          zombieHitHeights.splice(hitZombieIndex, 1);
+          score += 1;
+          updateHud();
+        }
         continue;
       }
 
@@ -1862,26 +2162,60 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       }
     }
 
-    for (const zombie of zombies) {
+    const ZOMBIE_VISION_RANGE = 35;
+    const ZOMBIE_GRAVITY = 36;
+    const ZOMBIE_SEPARATION_RADIUS = 0.6;
+    const ZOMBIE_BUILDING_COLLISION_RADIUS = 3.5;
+    const ZOMBIE_CAR_COLLISION_RADIUS = 1.8;
+    const ZOMBIE_ANIMATION_RANGE = 22;
+    const ZOMBIE_BASE_SPEED = 1.42;
+    const ZOMBIE_SPEED_RAMP = 0.055;
+
+    for (let zombieIndex = 0; zombieIndex < zombies.length; zombieIndex++) {
+      const zombie = zombies[zombieIndex];
       const toPlayer = camera.position.subtract(zombie.position);
       toPlayer.y = 0;
       const distance = toPlayer.length();
+      const zombieSpeedFactor = ZOMBIE_BASE_SPEED + survivalTime * ZOMBIE_SPEED_RAMP;
+
+      // Compute turn intent before movement so we can reduce sideways gliding.
+      const targetRotationY = Math.atan2(toPlayer.x, toPlayer.z);
+      const rotationDiff = targetRotationY - zombie.rotation.y;
+      let normalizedDiff = rotationDiff;
+      while (normalizedDiff > Math.PI) normalizedDiff -= Math.PI * 2;
+      while (normalizedDiff < -Math.PI) normalizedDiff += Math.PI * 2;
+      const facingFactor = Math.max(0.4, 1 - Math.abs(normalizedDiff) / (Math.PI * 0.9));
+      const approachFactor = Math.min(1, Math.max(0.55, distance / 4.2));
 
       // Zombies can only see/chase player if within vision range
-      const ZOMBIE_VISION_RANGE = 35;
       const canSeePlayer = distance <= ZOMBIE_VISION_RANGE;
 
+      const animGroups = zombieAnimationGroups[zombieIndex] ?? [];
+      if (animGroups.length > 0) {
+        const shouldAnimate = canSeePlayer && distance <= ZOMBIE_ANIMATION_RANGE;
+        const animSpeed = Math.min(1.08, 0.82 + zombieSpeedFactor * 0.11);
+        for (const group of animGroups) {
+          group.speedRatio = animSpeed;
+          if (shouldAnimate) {
+            if (!group.isPlaying) {
+              group.start(true, animSpeed, group.from, group.to, false);
+            }
+          } else if (group.isPlaying) {
+            group.pause();
+          }
+        }
+      }
+
       // Apply gravity to zombies
-      const zombieIndex = zombies.indexOf(zombie);
-      const ZOMBIE_GRAVITY = 36;
       zombieVelocities[zombieIndex].y -= ZOMBIE_GRAVITY * dt;
       zombieVelocities[zombieIndex].y = Math.max(-45, zombieVelocities[zombieIndex].y);
       
       zombie.position.y += zombieVelocities[zombieIndex].y * dt;
       
       // Ground collision
-      if (zombie.position.y <= 0.9) {
-        zombie.position.y = 0.9;
+      const zombieGroundY = zombieGroundHeights[zombieIndex] ?? 0.03;
+      if (zombie.position.y <= zombieGroundY) {
+        zombie.position.y = zombieGroundY;
         zombieVelocities[zombieIndex].y = 0;
       }
 
@@ -1917,19 +2251,12 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       }
 
       if (!isClimbing && distance > 0.01 && canSeePlayer) {
-        const zombieSpeedFactor = 1.8 + survivalTime * 0.08;
-        const move = toPlayer.scale((1 / distance) * dt * zombieSpeedFactor);
+        const moveSpeed = zombieSpeedFactor * facingFactor * approachFactor;
+        const move = toPlayer.scale((1 / distance) * dt * moveSpeed);
         zombie.position.addInPlace(move);
 
         // Make zombie face the player with smooth rotation
-        const targetRotationY = Math.atan2(toPlayer.x, toPlayer.z);
         const maxTurnSpeed = dt * 2.5;
-        const rotationDiff = targetRotationY - zombie.rotation.y;
-
-        // Normalize angle difference to [-PI, PI]
-        let normalizedDiff = rotationDiff;
-        while (normalizedDiff > Math.PI) normalizedDiff -= Math.PI * 2;
-        while (normalizedDiff < -Math.PI) normalizedDiff += Math.PI * 2;
 
         // Apply limited rotation
         if (Math.abs(normalizedDiff) > maxTurnSpeed) {
@@ -1940,9 +2267,8 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
       }
 
       // Zombie-to-zombie collision to prevent stacking
-      const ZOMBIE_SEPARATION_RADIUS = 0.6;
       for (let j = 0; j < zombies.length; j++) {
-        if (j === zombies.indexOf(zombie)) continue;
+        if (j === zombieIndex) continue;
         const otherZombie = zombies[j];
         const separation = zombie.position.subtract(otherZombie.position);
         const sepDist = separation.length();
@@ -1951,6 +2277,32 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
           const pushForce = (ZOMBIE_SEPARATION_RADIUS - sepDist) * 0.5;
           const pushDirection = separation.scale(1 / sepDist);
           zombie.position.addInPlace(pushDirection.scale(pushForce * dt));
+        }
+      }
+
+      // Zombie collision with buildings
+      for (const [x, _, z] of activeBuildingPositions) {
+        const dx = zombie.position.x - x;
+        const dz = zombie.position.z - z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < ZOMBIE_BUILDING_COLLISION_RADIUS && dist > 0.01) {
+          const overlap = ZOMBIE_BUILDING_COLLISION_RADIUS - dist;
+          const safeDist = Math.max(0.0001, dist);
+          zombie.position.x += (dx / safeDist) * overlap;
+          zombie.position.z += (dz / safeDist) * overlap;
+        }
+      }
+
+      // Zombie collision with cars
+      for (const car of cars) {
+        const dx = zombie.position.x - car.position.x;
+        const dz = zombie.position.z - car.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < ZOMBIE_CAR_COLLISION_RADIUS && dist > 0.01) {
+          const overlap = ZOMBIE_CAR_COLLISION_RADIUS - dist;
+          const safeDist = Math.max(0.0001, dist);
+          zombie.position.x += (dx / safeDist) * overlap;
+          zombie.position.z += (dz / safeDist) * overlap;
         }
       }
 

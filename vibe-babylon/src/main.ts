@@ -38,10 +38,10 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   const imageFx = scene.imageProcessingConfiguration;
   imageFx.toneMappingEnabled = true;
   imageFx.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-  imageFx.exposure = 1.08;
-  imageFx.contrast = 1.16;
+  imageFx.exposure = 1.18;
+  imageFx.contrast = 1.12;
   imageFx.vignetteEnabled = true;
-  imageFx.vignetteWeight = 0.22;
+  imageFx.vignetteWeight = 0.14;
   imageFx.vignetteStretch = 0.08;
   imageFx.vignetteBlendMode = ImageProcessingConfiguration.VIGNETTEMODE_MULTIPLY;
   imageFx.vignetteColor = new Color4(0, 0, 0, 0);
@@ -409,8 +409,8 @@ function createScene(engine: Engine, canvas: HTMLCanvasElement) {
   sniperGrip.isPickable = false;
 
   // Cinematic sunset rig: warm key light + cool ambient fill.
-  const SUN_INTENSITY = 1.15;
-  const AMBIENT_INTENSITY = 0.34;
+  const SUN_INTENSITY = 1.28;
+  const AMBIENT_INTENSITY = 0.42;
 
   const sun = new DirectionalLight("sun", new Vector3(-0.92, -0.36, -0.18), scene);
   sun.position = new Vector3(72, 28, 36);
